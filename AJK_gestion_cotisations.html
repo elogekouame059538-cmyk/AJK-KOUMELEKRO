@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AJK — Gestion des cotisations</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f6f8;color:#17202a}
+header{background:#102a43;color:#fff;padding:24px 16px;text-align:center}header h1{margin:0 0 6px;font-size:25px}header p{margin:0;opacity:.9}
+.container{max-width:1000px;margin:auto;padding:18px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.card{background:#fff;border-radius:14px;padding:16px;box-shadow:0 2px 10px #00000010}.card b{display:block;font-size:23px;margin-top:6px}
+.panel{background:#fff;border-radius:14px;padding:18px;margin-bottom:18px;box-shadow:0 2px 10px #00000010}
+h2{margin-top:0}.row{display:flex;gap:10px;flex-wrap:wrap}
+input,select,button{font:inherit;padding:11px 12px;border-radius:9px;border:1px solid #ccd6df}
+input{flex:1;min-width:180px}button{cursor:pointer;border:0;background:#102a43;color:#fff;font-weight:bold}
+button.secondary{background:#52606d}button.success{background:#17833b}button.danger{background:#b42318}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 8px;border-bottom:1px solid #e6e9ec}th{background:#f8fafc}
+.badge{padding:6px 9px;border-radius:20px;font-size:12px;font-weight:bold;display:inline-block}.paid{background:#d9f7e4;color:#146c35}.unpaid{background:#fde2e1;color:#9f1c18}
+.admin{display:none}.notice{padding:11px;border-radius:9px;background:#fff4d6;margin-top:10px}
+.small{font-size:13px;color:#52606d}.empty{text-align:center;padding:25px;color:#52606d}
+@media(max-width:750px){.grid{grid-template-columns:repeat(2,1fr)}table{font-size:14px}.hide-mobile{display:none}}
+@media(max-width:430px){.grid{grid-template-columns:1fr 1fr}.card b{font-size:19px}}
+</style>
+</head>
+<body>
+<header>
+<h1>AJK 🫂</h1>
+<p>Association des Jeunesses de Koumelekro Unie — Gestion des cotisations</p>
+</header>
+
+<div class="container">
+<div class="grid">
+<div class="card">Membres<b id="totalMembers">0</b></div>
+<div class="card">Payés<b id="paidMembers">0</b></div>
+<div class="card">Non payés<b id="unpaidMembers">0</b></div>
+<div class="card">Total encaissé<b id="totalMoney">0 FCFA</b></div>
+</div>
+
+<div class="panel">
+<h2>🔐 Espace trésorier</h2>
+<div class="row">
+<input id="password" type="password" placeholder="Mot de passe trésorier">
+<button onclick="login()">Se connecter</button>
+<button class="secondary" onclick="logout()">Se déconnecter</button>
+</div>
+<p id="loginMsg" class="small">Connectez-vous pour modifier les paiements.</p>
+<div id="adminPanel" class="admin">
+<hr>
+<div class="row">
+<input id="newName" placeholder="Nom du nouveau membre">
+<button onclick="addMember()">Ajouter un membre</button>
+</div>
+<p class="small">Mot de passe de démonstration : <b>AJK2026</b>. À changer avant une utilisation réelle.</p>
+</div>
+</div>
+
+<div class="panel">
+<h2>💰 Cotisation mensuelle</h2>
+<div class="row">
+<label>Montant par membre :
+<input id="monthlyFee" type="number" min="0" value="1000" onchange="saveFee()">
+</label>
+<label>Mois :
+<select id="month" onchange="saveMonth()">
+<option>Août 2026</option><option>Septembre 2026</option><option>Octobre 2026</option>
+<option>Novembre 2026</option><option>Décembre 2026</option>
+</select>
+</label>
+</div>
+</div>
+
+<div class="panel">
+<h2>👥 Liste des membres</h2>
+<div class="row" style="margin-bottom:12px">
+<input id="search" placeholder="Rechercher un membre..." oninput="render()">
+<select id="filter" onchange="render()">
+<option value="all">Tous</option><option value="paid">Payés</option><option value="unpaid">Non payés</option>
+</select>
+</div>
+<div style="overflow-x:auto">
+<table>
+<thead><tr><th>Membre</th><th>Statut</th><th>Montant</th><th>Action</th></tr></thead>
+<tbody id="membersTable"></tbody>
+</table>
+</div>
+<div id="empty" class="empty" style="display:none">Aucun membre trouvé.</div>
+</div>
+
+<div class="panel">
+<h2>📊 Résumé</h2>
+<p id="summary"></p>
+<div class="notice">Les données sont enregistrées dans ce navigateur. Pour une utilisation par plusieurs trésoriers sur plusieurs téléphones, il faudra connecter le site à une vraie base de données en ligne.</div>
+</div>
+</div>
+
+<script>
+const defaultMembers = [
+"Eløge Evrard","Marius","Jean","Yapo","Auriane","Ehkessy","Trésor",
+"Romaric","Hervé","Ezo","Fulgence","Herman"
+];
+
+let members = JSON.parse(localStorage.getItem("ajk_members") || "null") || defaultMembers.map(name=>({name,paid:false}));
+let fee = Number(localStorage.getItem("ajk_fee") || 1000);
+let month = localStorage.getItem("ajk_month") || "Août 2026";
+let admin = false;
+
+document.getElementById("monthlyFee").value=fee;
+document.getElementById("month").value=month;
+
+function save(){localStorage.setItem("ajk_members",JSON.stringify(members));}
+function saveFee(){fee=Math.max(0,Number(document.getElementById("monthlyFee").value)||0);localStorage.setItem("ajk_fee",fee);render();}
+function saveMonth(){month=document.getElementById("month").value;localStorage.setItem("ajk_month",month);render();}
+function money(n){return new Intl.NumberFormat("fr-FR").format(n)+" FCFA";}
+
+function login(){
+ const p=document.getElementById("password").value;
+ if(p==="AJK2026"){admin=true;document.getElementById("adminPanel").style.display="block";document.getElementById("loginMsg").textContent="✅ Mode trésorier activé.";render();}
+ else document.getElementById("loginMsg").textContent="❌ Mot de passe incorrect.";
+}
+function logout(){admin=false;document.getElementById("adminPanel").style.display="none";document.getElementById("loginMsg").textContent="Mode trésorier désactivé.";render();}
+
+function togglePaid(i){
+ if(!admin){alert("Connectez-vous comme trésorier.");return;}
+ members[i].paid=!members[i].paid; save(); render();
+}
+function addMember(){
+ if(!admin)return;
+ const input=document.getElementById("newName"), name=input.value.trim();
+ if(!name)return;
+ if(members.some(m=>m.name.toLowerCase()===name.toLowerCase())){alert("Ce membre existe déjà.");return;}
+ members.push({name,paid:false});input.value="";save();render();
+}
+function deleteMember(i){
+ if(!admin)return;
+ if(confirm("Supprimer ce membre ?")){members.splice(i,1);save();render();}
+}
+
+function render(){
+ const q=document.getElementById("search").value.toLowerCase();
+ const filter=document.getElementById("filter").value;
+ const paid=members.filter(m=>m.paid).length;
+ const total=members.length, unpaid=total-paid, amount=paid*fee;
+ document.getElementById("totalMembers").textContent=total;
+ document.getElementById("paidMembers").textContent=paid;
+ document.getElementById("unpaidMembers").textContent=unpaid;
+ document.getElementById("totalMoney").textContent=money(amount);
+ document.getElementById("summary").innerHTML=`Pour <b>${month}</b> : <b>${paid}</b> membre(s) ont payé sur <b>${total}</b>. Montant encaissé : <b>${money(amount)}</b>. Reste attendu : <b>${money(unpaid*fee)}</b>.`;
+
+ const rows=members.map((m,i)=>({m,i})).filter(x=>{
+   const okSearch=x.m.name.toLowerCase().includes(q);
+   const okFilter=filter==="all"||(filter==="paid"&&x.m.paid)||(filter==="unpaid"&&!x.m.paid);
+   return okSearch&&okFilter;
+ });
+ document.getElementById("empty").style.display=rows.length?"none":"block";
+ document.getElementById("membersTable").innerHTML=rows.map(x=>{
+   const m=x.m,i=x.i;
+   return `<tr><td><b>${escapeHtml(m.name)}</b></td>
+   <td><span class="badge ${m.paid?"paid":"unpaid"}">${m.paid?"✅ Payé":"❌ Non payé"}</span></td>
+   <td>${m.paid?money(fee):"—"}</td>
+   <td>${admin?`<button class="${m.paid?"danger":"success"}" onclick="togglePaid(${i})">${m.paid?"Annuler":"Marquer payé"}</button> <button class="danger" onclick="deleteMember(${i})">Supprimer</button>`:"🔒 Trésorier"}</td></tr>`;
+ }).join("");
+}
+function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));}
+render();
+</script>
+</body>
+</html>
